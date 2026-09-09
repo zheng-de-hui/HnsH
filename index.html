@@ -2631,5 +2631,125 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
+
+<script id="v62-accurate-stats">
+(function(){
+  // V6.2：统计只从现有本地学习记录 + 题库实时计算，不写死展示数字。
+  // 兼容旧版本 localStorage，尽量读取常见字段；无法确认的数据不伪造。
+  function safeParse(v, fallback){
+    try { return JSON.parse(v); } catch(e) { return fallback; }
+  }
+  function readAttempts(){
+    var keys = ["attempts","WORKBENCH_ATTEMPTS","studyAttempts","questionAttempts"];
+    for (var i=0;i<keys.length;i++){
+      var v = localStorage.getItem(keys[i]);
+      if(!v) continue;
+      var x = safeParse(v, null);
+      if(Array.isArray(x)) return x;
+      if(x && Array.isArray(x.attempts)) return x.attempts;
+      if(x && typeof x==="object"){
+        var vals = Object.values(x);
+        if(vals.length && vals.every(function(a){return a && typeof a==="object";})) return vals;
+      }
+    }
+    return [];
+  }
+  function qidOf(q){ return q && (q.qid || q.id || q.key); }
+  function tsOf(a){
+    var x = a && (a.ts || a.time || a.timestamp || a.createdAt);
+    if(typeof x==="number") return x < 1e12 ? x*1000 : x;
+    var n = Date.parse(x);
+    return isNaN(n) ? null : n;
+  }
+  function isCorrect(a){
+    if(a.correct === true) return true;
+    if(a.correct === false) return false;
+    if(a.selfOk === true) return true;
+    return false;
+  }
+  function calc(){
+    var qs = (window.WORKBENCH_DATA && Array.isArray(WORKBENCH_DATA.questions))
+      ? WORKBENCH_DATA.questions : [];
+    var attempts = readAttempts();
+
+    var graded = attempts.filter(function(a){
+      return a && (a.correct===true || a.correct===false || a.selfOk===true || a.selfOk===false);
+    });
+    var correct = graded.filter(isCorrect).length;
+    var accuracy = graded.length ? correct/graded.length*100 : 0;
+
+    var days = {};
+    attempts.forEach(function(a){
+      var t=tsOf(a); if(t!==null) {
+        var d=new Date(t);
+        var key=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+        days[key]=true;
+      }
+    });
+    var keys=Object.keys(days).sort();
+    var streak=0;
+    var cursor=new Date();
+    cursor.setHours(0,0,0,0);
+    for(var i=keys.length-1;i>=0;i--){
+      var d=new Date(keys[i]+"T00:00:00");
+      var diff=Math.round((cursor-d)/86400000);
+      if(diff===0 || diff===1){
+        streak++;
+        cursor=d;
+      } else if(diff>1) break;
+    }
+
+    var seconds=attempts.reduce(function(sum,a){
+      var e=Number(a && (a.elapsed || a.duration || a.seconds || 0));
+      if(!isFinite(e) || e<0) return sum;
+      // 约定 elapsed 通常为毫秒；明显小值按秒处理
+      return sum + (e>100000 ? e/1000 : e);
+    },0);
+
+    // 知识覆盖率：优先使用题目 chapter；统计至少做过一次的章节 / 39核心章节。
+    var chapterSet={};
+    attempts.forEach(function(a){
+      var qid=qidOf(a);
+      var q=qs.find(function(x){return qidOf(x)===qid;});
+      var ch=q && (q.chapterNo || q.chapter || q.ch);
+      var n=parseInt(ch,10);
+      if(n>=1 && n<=39) chapterSet[n]=true;
+    });
+    var coverage = 39 ? Object.keys(chapterSet).length/39*100 : 0;
+
+    return {
+      accuracy: accuracy,
+      graded: graded.length,
+      streak: streak,
+      studyHours: seconds/3600,
+      coverage: coverage,
+      coveredChapters: Object.keys(chapterSet).length,
+      totalChapters: 39
+    };
+  }
+
+  window.SCNU_V62_STATS = {calc:calc};
+
+  // 如果首页存在这些 data-stat 标记，则自动填充；不存在也不报错。
+  function render(){
+    var s=calc();
+    document.querySelectorAll('[data-stat="accuracy"]').forEach(function(e){
+      e.textContent=s.accuracy.toFixed(2)+"%";
+    });
+    document.querySelectorAll('[data-stat="streak"]').forEach(function(e){
+      e.textContent=s.streak+" 天";
+    });
+    document.querySelectorAll('[data-stat="hours"]').forEach(function(e){
+      e.textContent=s.studyHours.toFixed(1)+"h";
+    });
+    document.querySelectorAll('[data-stat="coverage"]').forEach(function(e){
+      e.textContent=s.coverage.toFixed(1)+"%";
+    });
+  }
+  document.addEventListener("DOMContentLoaded",render);
+  window.addEventListener("storage",render);
+})();
+</script>
+
 </body>
 </html>
