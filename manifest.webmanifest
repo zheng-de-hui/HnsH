@@ -1,0 +1,9 @@
+{
+  "name": "华南师大普通生物学备考工作台",
+  "short_name": "普通生物学",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f6f2e9",
+  "theme_color": "#1f3a5f",
+  "lang": "zh-CN"
+}
