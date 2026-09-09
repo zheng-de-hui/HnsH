@@ -1065,9 +1065,11 @@ function saveState(){
 /* ---------- Attempt 三态工具 ---------- */
 const attemptsOf = qid => Array.isArray(state.attempts[qid]) ? state.attempts[qid] : [];
 const gradedOf = qid => attemptsOf(qid).filter(a => a.correct === true || a.correct === false);
-function recordAttempt(qid, correct, src){
+function recordAttempt(qid, correct, src, elapsedMs){
   const a = state.attempts[qid] || (state.attempts[qid] = []);
-  a.push({ ts:Date.now(), correct, src:src||'practice' });
+  const rec = { ts:Date.now(), correct, src:src||'practice' };
+  if(Number.isFinite(elapsedMs) && elapsedMs>=0) rec.elapsed = Math.min(elapsedMs, 30*60*1000);
+  a.push(rec);
   if(a.length>60) state.attempts[qid]=a.slice(-60);
   if(correct===false){
     const w = state.wrong[qid] || {cnt:0,last:0};
@@ -1182,6 +1184,7 @@ function indexQuestions(){
 
 /* ---------- 渲染工具 ---------- */
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttrJson(v){ return String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 const TYPE_LABEL={choice:'单选题',judge:'判断题',fill:'填空题',name:'名词解释',noun:'名词解释',translation:'英汉互译',short:'简答题',essay:'论述题'};
 const TYPE_CLASS={choice:'t-choice',judge:'t-judge',fill:'t-fill',name:'t-name',noun:'t-name',translation:'t-name',short:'t-short',essay:'t-short'};
 function chapterTitle(no){ const c=(CHAPTERS.chapters||[]).find(x=>x.chapterNo===no); return c?c.title:('第'+no+'章'); }
@@ -1209,9 +1212,9 @@ function renderHome(){
 
   /* 今日任务：到期复习 > 最近错误 > 高频低掌握 */
   const tasks=[];
-  if(due.length) tasks.push({icon:'🔁',label:`间隔复习 ${due.length} 题`,desc:'到期待复习，点此重练',act:`startPractice(${JSON.stringify(due)},'间隔复习')`});
+  if(due.length) tasks.push({icon:'🔁',label:`间隔复习 ${due.length} 题`,desc:'到期待复习，点此重练',act:`startPractice(${escAttrJson(JSON.stringify(due))},'间隔复习')`});
   const recentWrong=Object.keys(state.wrong).filter(qid=>QBYQID[qid]).sort((a,b)=>state.wrong[b].last-state.wrong[a].last).slice(0,10);
-  if(recentWrong.length) tasks.push({icon:'📕',label:`最近错题 ${recentWrong.length} 道`,desc:'答错待巩固',act:`startPractice(${JSON.stringify(recentWrong)},'最近错题')`});
+  if(recentWrong.length) tasks.push({icon:'📕',label:`最近错题 ${recentWrong.length} 道`,desc:'答错待巩固',act:`startPractice(${escAttrJson(JSON.stringify(recentWrong))},'最近错题')`});
   if(conf.length) tasks.push({icon:'🧩',label:`疑似混淆 ${conf.length} 组`,desc:'同一知识点多次出错，建议专项',act:`state.view='diag';saveState();render()`});
 
   // 手机端首页
@@ -1438,7 +1441,7 @@ function showConceptCard(cid){
     <h3 class="serif" style="font-size:var(--fs-lg);margin:12px 0 8px">📖 相关题目</h3>
     <div class="q-list" id="cardQlist">${qs.map((q,i)=>questionHTML(q,i)).join('')}</div>
     <div class="actions" style="margin-top:12px">
-      <button class="btn primary" onclick="startPractice(${JSON.stringify(card.qids)},'${esc(card.title)} 专项')">🎯 练习本知识点</button>
+      <button class="btn primary" onclick="startPractice(${escAttrJson(JSON.stringify(card.qids))},'${esc(card.title)} 专项')">🎯 练习本知识点</button>
       <button class="btn ghost" onclick="state.view='concepts';saveState();render()">← 返回知识</button>
     </div>
   </div>`;
@@ -1479,7 +1482,7 @@ function attachQuestionEvents(container){
         const ans=normalizedChoiceAnswer(q);
         correct = ans ? val===ans : null;
       }
-      recordAttempt(qid, correct, 'practice');
+      recordAttempt(qid, correct, 'practice',Date.now()-(state.practice&&state.practice.questionStartedAt||Date.now()));
       if(correct===true) el.classList.add('correct');
       else if(correct===false) el.classList.add('wrong');
       qcard.querySelector('.q-answer').style.display='block';
@@ -1522,6 +1525,7 @@ function renderPractice(){
   if(!p){ state.view='home'; render(); return; }
   if(p.idx>=p.list.length){ renderPracticeDone(); return; }
   const q=QBYQID[p.list[p.idx]];
+  if(p.timerQid!==q.qid){ p.timerQid=q.qid; p.questionStartedAt=Date.now(); }
   let answered=p.answers[q.qid];
   answered=syncChoiceAnswerState(q, answered);
   const main=document.getElementById('mainArea');
@@ -1583,7 +1587,7 @@ function renderPractice(){
   }
 
   const submit=(val,correct)=>{
-    p.answers[q.qid]={v:val,correct}; recordAttempt(q.qid,correct,'practice');
+    p.answers[q.qid]={v:val,correct}; recordAttempt(q.qid,correct,'practice',Date.now()-(p.questionStartedAt||Date.now()));
     if(!correct){ const qcard=document.querySelector('.q-card'); setTimeout(()=>showErrPick(qcard,q.qid),300); }
     render();
   };
@@ -1659,7 +1663,7 @@ function renderPracticeDone(){
   document.getElementById('mainArea').innerHTML=`<div class="view" style="text-align:center;padding:40px 20px">
     <div style="font-family:var(--serif);font-size:42px;color:var(--accent)">${correct}/${graded.length}</div>
     <div style="font-size:var(--fs-md);color:var(--ink-soft);margin:10px 0 20px">${esc(p.label)} · 正确率 ${pct}%（未评分主观题不计入）</div>
-    <div class="actions" style="justify-content:center"><button class="btn primary" onclick="startPractice(${JSON.stringify(p.list)},'${esc(p.label)} 再练')">🔁 再练</button><button class="btn ghost" onclick="state.practice=null;state.view='${rv}';saveState();render()">${backLabel}</button></div></div>`;
+    <div class="actions" style="justify-content:center"><button class="btn primary" onclick="startPractice(${escAttrJson(JSON.stringify(p.list))},'${esc(p.label)} 再练')">🔁 再练</button><button class="btn ghost" onclick="state.practice=null;state.view='${rv}';saveState();render()">${backLabel}</button></div></div>`;
 }
 function judgeFill(user,answer){
   const norm=s=>String(s).replace(/\s+/g,'').replace(/[（(].*?[)）]/g,'').toLowerCase();
@@ -1728,7 +1732,7 @@ function renderWrong(){
   document.getElementById('mainArea').innerHTML=`<div class="view">
     <div class="ch-head"><h2>📕 错题本（${all.length}）</h2></div>
     <div class="wrong-focus"><div class="wrong-focus-title">🔥 今天优先复习</div><div style="font-size:var(--fs-xs);color:var(--ink-soft);margin-bottom:9px">${high} 道高频错题 · ${recent} 道最近错题 · ${stale} 道久未复习</div><div class="wrong-focus-actions"><button class="wrong-chip ${wrongFilterPriority==='high'?'active':''}" onclick="setWrongPriority('high')">🔥 高频 ${high}</button><button class="wrong-chip ${wrongFilterPriority==='recent'?'active':''}" onclick="setWrongPriority('recent')">🕘 最近 ${recent}</button><button class="wrong-chip ${wrongFilterPriority==='stale'?'active':''}" onclick="setWrongPriority('stale')">💤 久未复习 ${stale}</button><button class="wrong-chip ${wrongFilterPriority==='all'?'active':''}" onclick="setWrongPriority('all')">全部</button></div></div>
-    <button class="wrong-retry-btn btn primary" onclick="startPractice(${JSON.stringify(all.map(r=>r.qid))},'全部错题重练')">🎯 全部重练 · ${all.length} 道</button>
+    <button class="wrong-retry-btn btn primary" onclick="startPractice(${escAttrJson(JSON.stringify(all.map(r=>r.qid)))},'全部错题重练')">🎯 全部重练 · ${all.length} 道</button>
     <div class="wrong-toolbar"><button class="wrong-chip ${wrongFilterSource==='all'?'active':''}" onclick="setWrongSource('all')">全部</button><button class="wrong-chip ${wrongFilterSource==='shencai'?'active':''}" onclick="setWrongSource('shencai')">圣才</button><button class="wrong-chip ${wrongFilterSource==='scnu'?'active':''}" onclick="setWrongSource('scnu')">华师真题</button></div>
     <div style="font-size:var(--fs-xs);color:var(--ink-soft);margin:4px 2px 8px">当前 ${rows.length} 道 · 答对后自动移出</div>${items}
   </div>`;
@@ -1844,7 +1848,7 @@ function renderFlash(){
     main.innerHTML=`<div class="view" style="text-align:center;padding:40px 20px">
       <div style="font-family:var(--serif);font-size:var(--fs-2xl);color:var(--accent)">背诵完成</div>
       <div style="font-size:var(--fs-md);color:var(--ink-soft);margin:12px 0 20px">本轮 ${f.list.length} 张 · 认识${f.stats[0]} · 模糊${f.stats[1]} · 不会${f.stats[2]}</div>
-      <div class="actions" style="justify-content:center"><button class="btn primary" onclick="${f.scope==='search' ? 'startFlashSearch()' : `startFlash(${f.scope && f.scope!=='all' ? JSON.stringify(f.scope) : 'null'})`} ">🔁 再背一轮</button><button class="btn ghost" onclick="state.flash=null;state.view='flashMenu';saveState();render()">🏠 返回</button></div></div>`;
+      <div class="actions" style="justify-content:center"><button class="btn primary" onclick="${f.scope==='search' ? 'startFlashSearch()' : `startFlash(${f.scope && f.scope!=='all' ? escAttrJson(JSON.stringify(f.scope)) : 'null'})`} ">🔁 再背一轮</button><button class="btn ghost" onclick="state.flash=null;state.view='flashMenu';saveState();render()">🏠 返回</button></div></div>`;
     return;
   }
   const qid=f.list[f.idx];
@@ -1980,9 +1984,9 @@ function renderMock(){
     });
   }
 
-  main.querySelectorAll('.opt[data-opt],.opt[data-judge]').forEach(el=>{el.addEventListener('click',()=>{if(answered)return;const val=el.dataset.opt||el.dataset.judge;const correct=q.type==='judge'?(val==='对')===String(q.answer).trim().startsWith('对'):val===String(q.answer).trim().charAt(0);m.ans[m.idx]=correct;recordAttempt(q.qid,correct,'mock');saveState();renderMock();});});
+  main.querySelectorAll('.opt[data-opt],.opt[data-judge]').forEach(el=>{el.addEventListener('click',()=>{if(answered)return;const val=el.dataset.opt||el.dataset.judge;const correct=q.type==='judge'?(val==='对')===String(q.answer).trim().startsWith('对'):val===String(q.answer).trim().charAt(0);m.ans[m.idx]=correct;recordAttempt(q.qid,correct,'mock',Date.now()-(m.questionStartedAt||Date.now()));saveState();renderMock();});});
   document.getElementById('mFillBtn')?.addEventListener('click',()=>{const v=document.getElementById('mFill').value.trim();if(!v){alert('请输入');return;}const c=judgeFill(v,q.answer);m.ans[m.idx]=c;recordAttempt(q.qid,c,'mock');saveState();renderMock();});
-  document.getElementById('mSubjBtn')?.addEventListener('click',()=>{const v=document.getElementById('mSubj').value.trim();if(!v){alert('请作答');return;}recordAttempt(q.qid,null,'mock');m.self[m.idx]=v;
+  document.getElementById('mSubjBtn')?.addEventListener('click',()=>{const v=document.getElementById('mSubj').value.trim();if(!v){alert('请作答');return;}recordAttempt(q.qid,null,'mock',Date.now()-(m.questionStartedAt||Date.now()));m.self[m.idx]=v;
     const fb=document.createElement('div');fb.className='feedback show';fb.style.cssText='background:var(--paper-2);border:1.5px solid var(--blue)';
     fb.innerHTML=`<div style="font-weight:700;color:var(--blue);margin-bottom:6px">📖 参考答案（自评：答对/答错）</div><div>${esc(q.answer)}</div><div class="actions" style="margin-top:10px"><button class="btn primary" id="sOk">✅ 答对</button><button class="btn ghost" id="sNo">❌ 答错</button></div>`;
     document.querySelector('.q-card').appendChild(fb);
@@ -2074,9 +2078,9 @@ function buildMockPlan(an){
   if(!an)return null;
   const tasks=[];
   if(an.weakCh&&an.weakCh.length) tasks.push({kind:'chapter',label:'失分章节',desc:an.weakCh.map(w=>`第${w.no}章 ${esc(chapterTitle(w.no))}（正确率${Math.round(w.rate*100)}%）`).join('；'),act:`goPracticeByChapter(${an.weakCh[0].no})`});
-  if(an.weakType&&an.weakType.length) tasks.push({kind:'type',label:'薄弱题型',desc:an.weakType.map(w=>`${TYPE_LABEL[w.t]}（${Math.round(w.rate*100)}%）`).join('；'),act:`startPractice(${JSON.stringify(allQids.filter(qid=>QBYQID[qid].type===an.weakType[0].t))},'薄弱题型专项')`});
+  if(an.weakType&&an.weakType.length) tasks.push({kind:'type',label:'薄弱题型',desc:an.weakType.map(w=>`${TYPE_LABEL[w.t]}（${Math.round(w.rate*100)}%）`).join('；'),act:`startPractice(${escAttrJson(JSON.stringify(allQids.filter(qid=>QBYQID[qid].type===an.weakType[0].t)))},'薄弱题型专项')`});
   const wrongQids=mockWrongQids();
-  if(wrongQids.length) tasks.push({kind:'redo',label:'重做错题',desc:`${wrongQids.length} 道模考错题`,act:`startPractice(${JSON.stringify(wrongQids)},'模考错题重做')`});
+  if(wrongQids.length) tasks.push({kind:'redo',label:'重做错题',desc:`${wrongQids.length} 道模考错题`,act:`startPractice(${escAttrJson(JSON.stringify(wrongQids))},'模考错题重做')`});
   return {ts:Date.now(),score:an.score,total:an.total,got:an.got,tasks};
 }
 function mockWrongQids(){ const m=state.mock; if(!m)return[]; return m.list.filter((qid,i)=>m.ans[i]===false); }
@@ -2413,7 +2417,7 @@ function renderZhenti(){
       
       ${qids.length ? `<div class="zhenti-footer">
         <span class="count-info">共 ${totalCount} 道题</span>
-        <button class="start-btn" onclick="startZhentiPractice(${JSON.stringify(qids)},'${esc(filterLabel + ' · 真题练习')}')">🎯 开始练习</button>
+        <button class="start-btn" onclick="startZhentiPractice(${escAttrJson(JSON.stringify(qids))},'${esc(filterLabel + ' · 真题练习')}')">🎯 开始练习</button>
       </div>` : ''}
     </div>`;
     return;
@@ -2444,7 +2448,7 @@ function renderZhenti(){
     ${qids.length ? `<div class="card" style="margin-bottom:16px;padding:14px"><div style="display:flex;align-items:center;gap:10px">
       <span style="font-weight:600">${esc(filterLabel)}</span>
       <span style="color:var(--ink-faint);font-size:var(--fs-xs)">共 ${totalCount} 题</span>
-      <button class="btn primary" style="margin-left:auto;padding:8px 20px;font-size:var(--fs-xs)" onclick="startZhentiPractice(${JSON.stringify(qids)},'${esc(filterLabel + ' · 真题练习')}')">🎯 开始练习</button>
+      <button class="btn primary" style="margin-left:auto;padding:8px 20px;font-size:var(--fs-xs)" onclick="startZhentiPractice(${escAttrJson(JSON.stringify(qids))},'${esc(filterLabel + ' · 真题练习')}')">🎯 开始练习</button>
     </div></div>` : ''}
     
     ${qids.length ? `<div class="scu-q-cards">${cardsHtml}</div>` : '<div class="empty">暂无符合条件的真题</div>'}
@@ -2664,7 +2668,6 @@ if ('serviceWorker' in navigator) {
   function isCorrect(a){
     if(a.correct === true) return true;
     if(a.correct === false) return false;
-    if(a.selfOk === true) return true;
     return false;
   }
   function calc(){
@@ -2700,10 +2703,9 @@ if ('serviceWorker' in navigator) {
     }
 
     var seconds=attempts.reduce(function(sum,a){
-      var e=Number(a && (a.elapsed || a.duration || a.seconds || 0));
+      var e=Number(a && a.elapsed);
       if(!isFinite(e) || e<0) return sum;
-      // 约定 elapsed 通常为毫秒；明显小值按秒处理
-      return sum + (e>100000 ? e/1000 : e);
+      return sum + e/1000;
     },0);
 
     // 知识覆盖率：优先使用题目 chapter；统计至少做过一次的章节 / 39核心章节。
