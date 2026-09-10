@@ -1,4 +1,4 @@
-const CACHE='scnu-pusheng-v64-objective-final';
+const CACHE='scnu-pusheng-v64-judge-v2';
 const ASSETS=['./','./index.html','./data.js','./terms.js','./manifest.webmanifest'];
 
 self.addEventListener('install', event => {
