@@ -834,14 +834,12 @@ p, li, .question-stem, .answer, .explanation{
   <button class="icon-btn" id="syncBtn" title="把学习数据回写到 vault 05_题库/学习数据.json（Chrome/Edge）" style="color:var(--ok);border-color:var(--ok)">☁ 同步</button>
   <nav class="nav">
     <button data-v="home" class="active">🏠 首页</button>
-    <button data-v="chapters">📚 章节</button>
-    <button data-v="zhenti">🎓 真题精选</button>
-    <button data-v="concepts">🧠 知识</button>
-    <button data-v="map">🗺 地图</button>
-    <button data-v="flash">🃏 快闪</button>
+    <button data-v="special">🎯 专项</button>
+    <button data-v="zhenti">🎓 真题</button>
     <button data-v="wrong">📕 错题</button>
-    <button data-v="diag">🩺 诊断</button>
-    <button data-v="mock">🎯 模拟</button>
+    <button data-v="flashMenu">🃏 快闪</button>
+    <button data-v="mock">📝 模拟</button>
+    <button data-v="profile">⋯ 更多</button>
   </nav>
 </header>
 
@@ -864,9 +862,9 @@ p, li, .question-stem, .answer, .explanation{
     <span class="icon">🏠</span>
     <span>首页</span>
   </button>
-  <button class="m-nav-item" data-mv="chapters">
-    <span class="icon">📚</span>
-    <span>章节</span>
+  <button class="m-nav-item" data-mv="special">
+    <span class="icon">🎯</span>
+    <span>专项</span>
   </button>
   <button class="m-nav-item" data-mv="zhenti">
     <span class="icon">🎓</span>
@@ -1318,8 +1316,8 @@ function renderHome(){
       <div class="card click" onclick="startMock()">
         <div class="home-secondary-icon">🏁</div><div><b>全真模拟</b><div class="d">圣才题库 · 限时模拟</div></div><span class="home-arrow">→</span>
       </div>
-      <div class="card click" onclick="state.view='diag';saveState();render()">
-        <div class="home-secondary-icon">🔎</div><div><b>错因诊断</b><div class="d">查看反复出错与疑似混淆</div></div><span class="home-arrow">→</span>
+      <div class="card click" onclick="state.view='profile';saveState();render()">
+        <div class="home-secondary-icon">⋯</div><div><b>更多工具</b><div class="d">模拟、学习诊断、知识体系与数据同步</div></div><span class="home-arrow">→</span>
       </div>
     </div>
 

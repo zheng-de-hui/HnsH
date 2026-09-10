@@ -1,4 +1,4 @@
-const CACHE='scnu-pusheng-v63-p6';
+const CACHE='scnu-pusheng-v64-slim';
 const ASSETS=['./','./index.html','./data.js','./terms.js','./manifest.webmanifest'];
 self.addEventListener('install',e=>e.waitUntil(
   caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())
